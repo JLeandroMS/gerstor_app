@@ -1,29 +1,36 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:gestor_archivos/device_repository.dart';
+import 'package:gestor_archivos/application/indexed_file_browser.dart';
+import 'package:gestor_archivos/data/local_file_storage.dart';
+import 'package:gestor_archivos/data/sqlite_metadata_store.dart';
 
 void main() {
   late Directory temp;
   late Directory root;
-  late DeviceRepository repo;
+  late IndexedFileBrowser repo;
+  late LocalFileStorage storage;
+  late SqliteMetadataStore metadata;
   setUpAll(sqfliteFfiInit);
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('device_test_');
     root = await Directory('${temp.path}/phone').create();
     final db = await databaseFactoryFfi.openDatabase('${temp.path}/index.db',
-      options: OpenDatabaseOptions(version: 1, onCreate: DeviceRepository.createSchema));
-    repo = DeviceRepository(db, [await root.resolveSymbolicLinks()]);
+      options: OpenDatabaseOptions(version: 1, onCreate: SqliteMetadataStore.createSchema));
+    storage = LocalFileStorage();
+    await storage.configureRoots([root.path]);
+    metadata = SqliteMetadataStore(() async => db);
+    repo = IndexedFileBrowser(storage: storage, metadata: metadata);
   });
-  tearDown(() async { await repo.db.close(); await temp.delete(recursive: true); });
+  tearDown(() async { await metadata.close(); await temp.delete(recursive: true); });
 
   test('descubre archivos existentes y sincroniza cambios externos con SQLite', () async {
     final source = await File('${root.path}/foto.txt').writeAsString('contenido');
     expect((await repo.list(root.path)).single.name, 'foto.txt');
-    expect((await repo.db.query('device_entries')).single['size'], 9);
+    expect((await (await metadata.database).query('device_entries')).single['size'], 9);
     await source.delete();
     expect(await repo.list(root.path), isEmpty);
-    expect(await repo.db.query('device_entries'), isEmpty);
+    expect(await (await metadata.database).query('device_entries'), isEmpty);
   });
 
   test('copiar conserva bytes, colisiones no sobrescriben y mover cambia el disco', () async {
@@ -51,6 +58,6 @@ void main() {
     await expectLater(repo.paste(folder, '${folder.path}/hijo', move: false), throwsStateError);
     await expectLater(repo.createFolder(root.path, '../escape'), throwsFormatException);
     await expectLater(repo.list(temp.path), throwsStateError);
-    await expectLater(repo.check(root.path, allowRoot: false), throwsStateError);
+    await expectLater(storage.check(root.path, allowRoot: false), throwsStateError);
   });
 }

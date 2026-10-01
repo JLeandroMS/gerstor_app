@@ -18,3 +18,16 @@ Usar archivos desechables y una carpeta PruebaGestor en Download.
 14. Cerrar y abrir; menú de archivos privados: siguen disponibles los archivos agregados antes, si se actualizó la misma app sin desinstalarla.
 15. Probar SD/USB si existe, acceso sin internet y compartir con una app instalada.
 16. Botón Atrás, rotación y volver desde un visor: sin errores de setState después de dispose.
+
+## Inicio y capacidad (2.2)
+
+- Sin permiso: el inicio ofrece habilitar acceso y no muestra cifras inventadas.
+- Habilitar permiso, volver y comprobar que aparecen tarjetas de capacidad y accesos.
+- Tocar Descargas: abre Download del teléfono y permite volver con el botón de casa.
+- Verificar Cámara/DCIM, Imágenes/Pictures, Documents, Music y Movies si existen.
+- Una carpeta inexistente debe quedar deshabilitada, sin crear carpetas automáticamente.
+- Borrar/copiar un archivo de prueba y volver al inicio: cifras consultadas nuevamente (pueden no variar visiblemente si el archivo es pequeño).
+- Revocar permiso, volver a la app: no conservar tarjetas accesibles con información anterior.
+- Conectar/retirar SD o USB si está disponible, actualizar y comprobar los volúmenes.
+- Probar pantalla estrecha, horizontal y texto grande: tarjetas envuelven el contenido.
+- Abrir modo privado desde Inicio y regresar: mantener la información y funciones anteriores.

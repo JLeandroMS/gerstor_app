@@ -1,46 +1,22 @@
-// ALMACENAMIENTO REAL Y SQLITE. El disco es la fuente del listado. device_files.db registra metadatos de carpetas visitadas, sin guardar contenido binario. La transacción SQL no abarca las operaciones del sistema de archivos.
-// Guía de lectura: docs/GUIA_DEL_CODIGO.md. Los comentarios explican el código existente.
-
 import 'dart:io';
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
-import 'file_repository.dart';
+import '../domain/models/device_entry.dart';
+import '../domain/contracts/file_storage.dart';
+import '../core/file_name_validator.dart';
 
-/// Modelo inmutable de los metadatos leídos del almacenamiento compartido.
-class DeviceEntry {
-  final String path;
-  final bool folder;
-  final int size;
-  final DateTime modified;
-  DeviceEntry(this.path, this.folder, this.size, this.modified);
-  /// Obtiene el último componente de la ruta, por ejemplo tarea.pdf, usando path.basename.
-  String get name => p.basename(path);
-}
-
-/// El disco es la fuente de verdad; SQLite mantiene el índice de metadatos.
-/// Nunca copia los archivos a la base de datos ni elimina archivos al limpiar el índice.
-/// Acceso al disco y mantenimiento del índice SQLite del explorador.
-class DeviceRepository {
-  final Database db;
-  final List<String> roots;
-  DeviceRepository(this.db, this.roots);
-
-  /// Abre device_files.db con sqflite. onCreate crea la tabla solo cuando corresponde. Resuelve las raíces reales y omite volúmenes no disponibles.
-  static Future<DeviceRepository> open(List<String> roots) async {
-    final db = await openDatabase(p.join(await getDatabasesPath(), 'device_files.db'),
-      version: 1, onCreate: createSchema);
-    final canonical = <String>[];
+/// Solo sistema de archivos: sin SQL, widgets, permisos ni plugins.
+class LocalFileStorage implements FileStorage {
+  List<String> _roots = [];
+  @override
+  List<String> get roots => List.unmodifiable(_roots);
+  @override
+  Future<void> configureRoots(List<String> roots) async {
+    final resolved = <String>[];
     for (final root in roots) {
-      try { canonical.add(await Directory(root).resolveSymbolicLinks()); }
-      on FileSystemException { /* Volumen extraído o no disponible. */ }
+      try { resolved.add(await Directory(root).resolveSymbolicLinks()); }
+      on FileSystemException { /* Volumen no disponible. */ }
     }
-    return DeviceRepository(db, canonical.toSet().toList());
-  }
-
-  /// Define path como clave primaria, registra metadatos y crea un índice sobre parent para consultar/borrar por carpeta. No utiliza BLOBs.
-  static Future<void> createSchema(Database db, int version) async {
-    await db.execute('CREATE TABLE device_entries(path TEXT PRIMARY KEY, parent TEXT NOT NULL, name TEXT NOT NULL, is_folder INTEGER NOT NULL, size INTEGER NOT NULL, modified TEXT NOT NULL)');
-    await db.execute('CREATE INDEX device_parent ON device_entries(parent)');
+    _roots = resolved.toSet().toList();
   }
 
   /// Resuelve la ruta canónica y exige que pertenezca a una raíz permitida. allowRoot=false evita modificar la raíz. Rechaza Android/data y Android/obb.
@@ -58,7 +34,7 @@ class DeviceRepository {
     }
   }
 
-  /// Lee el contenido directo, sin recursión ni enlaces. Si la lectura termina, sustituye en una transacción los metadatos de esa carpeta. Devuelve objetos leídos del disco, ordenados.
+  /// Lee el contenido directo, sin recursión ni enlaces. Si la lectura termina, devuelve sus elementos. Devuelve objetos leídos del disco, ordenados.
   Future<List<DeviceEntry>> list(String path) async {
     await check(path);
     final entries = <DeviceEntry>[];
@@ -68,18 +44,6 @@ class DeviceRepository {
       if (stat.type == FileSystemEntityType.notFound) continue;
       entries.add(DeviceEntry(entity.path, entity is Directory, stat.size, stat.modified));
     }
-    // Solo sustituye el índice si la lectura de la carpeta termina correctamente.
-    await db.transaction((tx) async {
-      await tx.delete('device_entries', where: 'parent=?', whereArgs: [path]);
-      final batch = tx.batch();
-      for (final entry in entries) {
-        batch.insert('device_entries', {'path': entry.path, 'parent': path,
-          'name': entry.name, 'is_folder': entry.folder ? 1 : 0,
-          'size': entry.folder ? 0 : entry.size, 'modified': entry.modified.toIso8601String()},
-          conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-      await batch.commit(noResult: true);
-    });
     entries.sort((a, b) => a.folder != b.folder ? (a.folder ? -1 : 1) : a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return entries;
   }
@@ -87,7 +51,7 @@ class DeviceRepository {
   /// Valida la carpeta y el nombre; rechaza un destino existente para no sobrescribirlo intencionalmente. Esta comprobación no bloquea cambios de otras aplicaciones.
   Future<String> target(String parent, String name) async {
     await check(parent);
-    final result = p.join(parent, FileRepository.validateName(name));
+    final result = p.join(parent, FileNameValidator.validateName(name));
     if (await FileSystemEntity.type(result, followLinks: false) != FileSystemEntityType.notFound) {
       throw StateError('Ya existe un elemento con ese nombre. No se sobrescribió.');
     }
@@ -99,20 +63,12 @@ class DeviceRepository {
     await Directory(await target(parent, name)).create();
   }
 
-  /// Elimina únicamente metadatos de la ruta y de sus descendientes. No borra archivos físicos. Usa substr para no interpretar % o _ del nombre como comodines.
-  Future<void> invalidate(String path) async {
-    // Evita LIKE: los nombres pueden contener % y _.
-    await db.delete('device_entries', where: 'path=? OR substr(path,1,?)=?',
-      whereArgs: [path, '$path/'.length, '$path/']);
-  }
-
-  /// Valida origen y destino, renombra físicamente el elemento e invalida las rutas antiguas del índice. La pantalla refresca después.
+  /// Valida origen y destino, renombra físicamente el elemento sin modificar SQLite. La pantalla refresca después.
   Future<void> rename(DeviceEntry entry, String name) async {
     await check(entry.path, allowRoot: false);
     final dest = await target(p.dirname(entry.path), name);
     if (entry.folder) { await Directory(entry.path).rename(dest); }
     else { await File(entry.path).rename(dest); }
-    await invalidate(entry.path);
   }
 
   /// Elimina físicamente el archivo o la carpeta completa. Es permanente. La confirmación se encuentra en la interfaz; el repositorio no abre diálogos.
@@ -120,7 +76,6 @@ class DeviceRepository {
     await check(entry.path, allowRoot: false);
     if (entry.folder) { await Directory(entry.path).delete(recursive: true); }
     else { await File(entry.path).delete(); }
-    await invalidate(entry.path);
   }
 
   /// Copia recursivamente: crea cada carpeta y copia archivos con File.copy. Rechaza enlaces simbólicos y comprueba las rutas de los descendientes.
@@ -153,7 +108,6 @@ class DeviceRepository {
       // y se conserva el origen; el usuario puede copiar y después eliminar.
       if (entry.folder) { await Directory(entry.path).rename(dest); }
       else { await File(entry.path).rename(dest); }
-      await invalidate(entry.path);
     } else {
       final staging = await Directory(parent).createTemp('.gestor-copy-');
       final temp = p.join(staging.path, entry.name);

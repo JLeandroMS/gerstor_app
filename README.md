@@ -1,11 +1,20 @@
-# Gestor de archivos del teléfono — Flutter, Android y SQLite
+# Gestor de archivos — acceso rápido y almacenamiento
 
-Esta versión abre el almacenamiento compartido real del celular. No hace falta importar los archivos: muestra Download, DCIM, Pictures, Documents, Music y cualquier otra carpeta accesible que exista. Permite navegar por almacenamiento interno y volúmenes SD/USB que Android exponga. Funciona offline.
+**Para instalar esta actualización y resolver el error de dashboard, seguí [LEEME_ACTUALIZACION.md](LEEME_ACTUALIZACION.md).**
+
+
+El explorador principal utiliza contratos, servicios de disco/SQLite/plataforma, controlador y una raíz de composición con inyección por constructor. Consultá [docs/GUIA_DEL_CODIGO.md](docs/GUIA_DEL_CODIGO.md). Se conserva el modo privado en legacy.
+
+## Novedades de inicio
+
+La app abre un inicio con porcentaje usado, espacio disponible y total por volumen, accesos a Descargas, Cámara, Imágenes, Documentos, Música y Videos, y entrada al explorador completo. Las carpetas ausentes se muestran deshabilitadas. El botón de casa regresa al inicio.
+
+**Esta versión modifica Kotlin:** reemplazá también `android_template`, ejecutá `preparar.ps1` y detené/reiniciá `flutter run`; hot reload no instala el método nativo dashboard. Si aparece MissingPluginException, comprobá que el preparador terminó y recompilá.
 
 ## Actualizar tu proyecto en Windows
 
 1. Detené `flutter run` y respaldá tu carpeta del proyecto.
-2. Copiá `lib`, `test`, `android_template`, `pubspec.yaml`, `preparar.ps1` y `preparar.bat` de este ZIP sobre tu proyecto. Conservá tu carpeta `android` existente.
+2. Después del respaldo, reemplazá completas las carpetas `lib`, `test` y `docs` por las de este ZIP (evitá mezclar código viejo). Copiá también `android_template`, `pubspec.yaml`, `preparar.ps1` y `preparar.bat`. Conservá tu carpeta `android` existente y el applicationId para mantener los datos de la app.
 3. En la terminal, dentro de la carpeta del proyecto, ejecutá:
 
 ```powershell
@@ -21,7 +30,7 @@ También podés extraer este ZIP en una carpeta nueva y ejecutar `preparar.bat`:
 
 1. Tocá **Dar acceso a los archivos**.
 2. Android 11 o posterior: activá **Permitir administrar todos los archivos** y volvé a la app. En Android 10 o anterior aceptá el permiso de almacenamiento.
-3. Se muestran las carpetas reales del almacenamiento. Entrá a `Download`, `DCIM`, etc.
+3. Se muestra el inicio con almacenamiento y accesos. Tocá Descargas, Cámara u otro acceso; “Explorar archivos” abre la raíz.
 4. Si no se actualiza, tocá el botón de actualizar. Si denegaste el permiso, podés solicitarlo otra vez.
 
 Android no permite explorar los datos privados de otras apps, las carpetas protegidas Android/data y Android/obb ni los archivos del sistema. No requiere root ni intenta evadir estas restricciones.
@@ -61,3 +70,7 @@ Se incluyen pruebas de repositorio y una lista de pruebas manuales. Este ZIP no 
 Si el proceso se interrumpe durante una copia, puede quedar una carpeta temporal `.gestor-copy-*` en el destino. Los errores capturados limpian esa copia temporal y conservan el origen. No modifiques simultáneamente desde otra app los archivos que se están copiando.
 
 Referencia del permiso: https://developer.android.com/training/data-storage/manage-all-files
+
+## Corrección de manifest merger con open_filex
+
+El preparador declara tools:replace="android:maxSdkVersion" en los permisos de almacenamiento de los manifiestos main/debug/profile y variantes existentes. Conserva el límite 29 de la app y evita el conflicto con el límite 32 de open_filex. Si tenés el ZIP anterior, reemplazá preparar.ps1 con esta versión y ejecutalo de nuevo; después ejecutá flutter run. No se requiere desinstalar ni borrar datos.

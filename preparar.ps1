@@ -75,6 +75,12 @@ Get-ChildItem (Join-Path $PSScriptRoot 'android\app\src') -Filter AndroidManifes
     }
     if ($changed) { $xml.Save($filePath) }
 }
+$installedActivity = Join-Path $activityDir 'MainActivity.kt'
+$installedCode = [System.IO.File]::ReadAllText($installedActivity)
+if ($installedCode -notmatch '"dashboard"\s*->' -or $installedCode -notmatch 'gestor/storage') {
+    throw 'MainActivity no contiene dashboard. Copia android_template de esta version y ejecuta de nuevo.'
+}
+Write-Host "Android actualizado: $installedActivity" -ForegroundColor Green
 & flutter pub get
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron descargar las dependencias. Revisa el error anterior y tu conexion.' }
 Write-Host "`nProyecto preparado. Ahora ejecuta: flutter devices" -ForegroundColor Green

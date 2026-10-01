@@ -1,4 +1,8 @@
+// MODELO DEL MODO PRIVADO. Entry representa una fila de entries. DeviceEntry, el modelo del explorador real, está en device_repository.dart.
+// Guía de lectura: docs/GUIA_DEL_CODIGO.md. Los comentarios explican el código existente.
+
 /// SQLite almacena metadatos. El contenido binario se guarda en disco.
+/// Modelo inmutable de una fila de la tabla privada entries.
 class Entry {
   final int id;
   final int? parentId;
@@ -22,6 +26,7 @@ class Entry {
     required this.modified,
   });
 
+  /// Convierte tipos SQLite en tipos Dart; is_folder se convierte a bool y las fechas a DateTime.
   factory Entry.fromMap(Map<String, Object?> row) => Entry(
     id: row['id'] as int,
     parentId: row['parent_id'] as int?,
@@ -35,6 +40,7 @@ class Entry {
   );
 }
 
+/// Convierte bytes a un texto legible en B, KB, MB o GB; no cambia el tamaño físico.
 String formatBytes(int value) {
   if (value < 1024) return '$value B';
   if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
